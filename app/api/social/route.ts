@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 type Media = { timestamp?: string };
 
 export async function POST(request: Request) {
-  const token = process.env.META_IG_ACCESS_TOKEN;
-  const accountId = process.env.META_IG_USER_ID;
+  const jar = await cookies();
+  const token = process.env.META_IG_ACCESS_TOKEN || jar.get("prospex_meta_token")?.value;
+  const accountId = process.env.META_IG_USER_ID || jar.get("prospex_meta_ig_account")?.value;
   if (!token || !accountId) return NextResponse.json({ error: "O Radar Social será ativado após conectar uma conta profissional do Instagram no painel Meta." }, { status: 503 });
   try {
     const { username } = await request.json() as { username?: string };
