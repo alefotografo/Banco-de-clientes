@@ -5,7 +5,7 @@ export function GET(request: Request) {
   if (!appId) return NextResponse.json({ error: "A conexão Meta ainda não foi configurada." }, { status: 503 });
   const origin = new URL(request.url).origin;
   const redirectUri = `${origin}/api/meta/callback`;
-  const url = new URL("https://www.facebook.com/v25.0/dialog/oauth");
+  const url = new URL("https://www.instagram.com/oauth/authorize");
   url.searchParams.set("client_id", appId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
