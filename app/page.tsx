@@ -5,10 +5,20 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 
 type Status = "novo" | "em análise" | "contatado" | "reunião" | "proposta" | "ganho" | "perdido";
-type Lead = { id: string; placeId?: string; name: string; category: string; address: string; phone?: string; website?: string; email?: string; whatsapp?: string; contactName?: string; contactRole?: string; contactSource?: string; status: Status; notes: string; source: string; updatedAt: string };
+type Lead = { id: string; placeId?: string; name: string; category: string; address: string; phone?: string; website?: string; email?: string; whatsapp?: string; contactName?: string; contactRole?: string; contactSource?: string; status: Status; notes: string; source: string; updatedAt: string; priorityScore: number; nextAction?: string; nextActionAt?: string };
 type Approach = { id: string; channel: string; content: string; createdAt: string };
 type SocialReport = { username: string; lastPublishedAt?: string; posts30: number; posts90: number; score: number; signal: string; note: string };
 const statuses: Status[] = ["novo", "em análise", "contatado", "reunião", "proposta", "ganho", "perdido"];
+function qualifyLead(lead: Partial<Lead>) {
+  let score = 35;
+  if (lead.website) score += 15;
+  if (lead.phone) score += 15;
+  if (lead.email || lead.whatsapp) score += 15;
+  if (lead.category) score += 10;
+  if (lead.status === "novo") score += 5;
+  const nextAction = lead.status === "novo" ? "Revisar presença digital e gerar abordagem" : lead.status === "contatado" ? "Fazer follow-up em 2 dias" : lead.status === "reunião" ? "Preparar diagnóstico para reunião" : lead.status === "proposta" ? "Confirmar decisão e próximos passos" : "Definir próxima ação comercial";
+  return { priorityScore: Math.min(100, score), nextAction };
+}
 export default function Home() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [query, setQuery] = useState({ city: "", neighborhood: "", segment: "", radius: "5000" });
@@ -45,13 +55,13 @@ export default function Home() {
     if (!supabase || !session) return;
     supabase.from("prospex_leads").select("*").order("priority_score", { ascending: false }).then(({ data, error }) => {
       if (error) return setNotice("Não foi possível carregar o pipeline salvo.");
-      if (data) setLeads(data.map((lead) => ({ id: lead.id, placeId: lead.place_id || undefined, name: lead.name, category: lead.category || "Não informado", address: lead.address || "Não informado", phone: lead.phone || undefined, website: lead.website || undefined, email: lead.email || undefined, whatsapp: lead.whatsapp || undefined, contactName: lead.contact_name || undefined, contactRole: lead.contact_role || undefined, contactSource: lead.contact_source || undefined, status: lead.status as Status, notes: lead.notes || "", source: lead.source, updatedAt: lead.updated_at })));
+      if (data) setLeads(data.map((lead) => ({ id: lead.id, placeId: lead.place_id || undefined, name: lead.name, category: lead.category || "Não informado", address: lead.address || "Não informado", phone: lead.phone || undefined, website: lead.website || undefined, email: lead.email || undefined, whatsapp: lead.whatsapp || undefined, contactName: lead.contact_name || undefined, contactRole: lead.contact_role || undefined, contactSource: lead.contact_source || undefined, status: lead.status as Status, notes: lead.notes || "", source: lead.source, updatedAt: lead.updated_at, priorityScore: lead.priority_score ?? 50, nextAction: lead.next_action || undefined, nextActionAt: lead.next_action_at || undefined })));
       setNotice("Pipeline sincronizado com segurança.");
     });
   }, [session]);
 
   function rowFor(lead: Lead) {
-    return { id: lead.id.startsWith("place-") ? undefined : lead.id, user_id: session?.user.id, place_id: lead.placeId || null, name: lead.name, category: lead.category, address: lead.address, phone: lead.phone || null, website: lead.website || null, email: lead.email || null, whatsapp: lead.whatsapp || null, contact_name: lead.contactName || null, contact_role: lead.contactRole || null, contact_source: lead.contactSource || null, status: lead.status, notes: lead.notes, source: lead.source, updated_at: new Date().toISOString() };
+    return { id: lead.id.startsWith("place-") ? undefined : lead.id, user_id: session?.user.id, place_id: lead.placeId || null, name: lead.name, category: lead.category, address: lead.address, phone: lead.phone || null, website: lead.website || null, email: lead.email || null, whatsapp: lead.whatsapp || null, contact_name: lead.contactName || null, contact_role: lead.contactRole || null, contact_source: lead.contactSource || null, status: lead.status, priority_score: lead.priorityScore, next_action: lead.nextAction || null, next_action_at: lead.nextActionAt || null, notes: lead.notes, source: lead.source, updated_at: new Date().toISOString() };
   }
 
   async function persist(leadsToSave: Lead[]) {
@@ -76,7 +86,7 @@ export default function Home() {
       const response = await fetch("/api/places", { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: JSON.stringify(query) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível concluir a busca.");
-      const found: Lead[] = body.leads.map((lead: Omit<Lead, "status" | "notes" | "source" | "updatedAt">) => ({ ...lead, status: "novo", notes: "", source: "Google Places", updatedAt: new Date().toISOString() }));
+      const found: Lead[] = body.leads.map((lead: Omit<Lead, "status" | "notes" | "source" | "updatedAt" | "priorityScore" | "nextAction">) => ({ ...lead, status: "novo", notes: "", source: "Google Places", updatedAt: new Date().toISOString(), ...qualifyLead({ ...lead, status: "novo" }) }));
       const newLeads = found.filter((item) => !leads.some((lead) => lead.placeId && lead.placeId === item.placeId));
       setLeads((current) => [...newLeads, ...current]);
       await persist(newLeads);
@@ -127,7 +137,7 @@ export default function Home() {
   }
 
   function updateStatus(lead: Lead, status: Status) {
-    const changed = { ...lead, status, updatedAt: new Date().toISOString() };
+    const changed = { ...lead, status, updatedAt: new Date().toISOString(), ...qualifyLead({ ...lead, status }) };
     setLeads((current) => current.map((item) => item.id === lead.id ? changed : item));
     if (selected?.id === lead.id) setSelected(changed);
     void persist([changed]);
