@@ -79,7 +79,7 @@ export default function Home() {
 
   async function search(event: FormEvent) {
     event.preventDefault();
-    if (!session) return setNotice("Entre com seu e-mail autorizado para pesquisar empresas.");
+    if (!session) { setNotice("Para buscar empresas, primeiro envie o link de acesso e entre na sua conta."); document.getElementById("acesso")?.scrollIntoView({ behavior: "smooth" }); return; }
     if (!query.city || !query.segment) return setNotice("Informe ao menos cidade e segmento para iniciar a busca.");
     setLoading(true); setNotice("Consultando fontes públicas autorizadas…");
     try {
