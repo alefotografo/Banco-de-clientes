@@ -3,6 +3,17 @@ import { requireProspexUser } from "../../lib/server-auth";
 
 type Place = { id?: string; displayName?: { text?: string }; primaryTypeDisplayName?: { text?: string }; formattedAddress?: string; nationalPhoneNumber?: string; internationalPhoneNumber?: string; websiteUri?: string };
 
+function radarProfile(place: Place, segment: string) {
+  let score = 35;
+  if (place.websiteUri) score += 15;
+  if (place.internationalPhoneNumber || place.nationalPhoneNumber) score += 15;
+  const visualTerms = /restaurante|hotel|pousada|clínica|odont|imobili|arquitet|salão|beleza|academia|evento|buffet|moda|loja|veículo|auto|turismo|gastron/i;
+  const text = `${segment} ${place.primaryTypeDisplayName?.text || ""} ${place.displayName?.text || ""}`;
+  if (visualTerms.test(text)) score += 25;
+  const priority = score >= 75 ? "alto potencial para foto e vídeo" : score >= 55 ? "potencial a qualificar" : "avaliar presença digital";
+  return { score: Math.min(100, score), priority, needsSocialAnalysis: true, summary: `${priority}. Próximo passo: confirmar o Instagram comercial e analisar a frequência de conteúdo.` };
+}
+
 export async function POST(request: Request) {
   const auth = await requireProspexUser(request);
   if (auth.error) return auth.error;
@@ -24,7 +35,8 @@ export async function POST(request: Request) {
     if (!response.ok) return NextResponse.json({ error: "A fonte de busca recusou a solicitação. Verifique a chave e o faturamento do Google Places." }, { status: response.status });
     const payload = await response.json() as { places?: Place[] };
     const seen = new Set<string>();
-    const leads = (payload.places ?? []).filter((place) => place.id && !seen.has(place.id) && Boolean(seen.add(place.id))).map((place) => ({ id: `place-${place.id}`, placeId: place.id, name: place.displayName?.text ?? "Empresa sem nome", category: place.primaryTypeDisplayName?.text ?? "Não informado", address: place.formattedAddress ?? "Não informado", phone: place.internationalPhoneNumber ?? place.nationalPhoneNumber, website: place.websiteUri }));
-    return NextResponse.json({ leads });
+    const leads = (payload.places ?? []).filter((place) => place.id && !seen.has(place.id) && Boolean(seen.add(place.id))).map((place) => ({ id: `place-${place.id}`, placeId: place.id, name: place.displayName?.text ?? "Empresa sem nome", category: place.primaryTypeDisplayName?.text ?? "Não informado", address: place.formattedAddress ?? "Não informado", phone: place.internationalPhoneNumber ?? place.nationalPhoneNumber, website: place.websiteUri, radar: radarProfile(place, input.segment || "") }));
+    const highPotential = leads.filter((lead) => lead.radar.score >= 75).length;
+    return NextResponse.json({ leads, radar: { area: location, total: leads.length, highPotential, nextStep: "Analise o Instagram oficial apenas dos leads prioritários para medir frequência de conteúdo." } });
   } catch { return NextResponse.json({ error: "Não foi possível processar a busca." }, { status: 500 }); }
 }

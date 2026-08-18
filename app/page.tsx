@@ -86,11 +86,11 @@ export default function Home() {
       const response = await fetch("/api/places", { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: JSON.stringify(query) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível concluir a busca.");
-      const found: Lead[] = body.leads.map((lead: Omit<Lead, "status" | "notes" | "source" | "updatedAt" | "priorityScore" | "nextAction">) => ({ ...lead, status: "novo", notes: "", source: "Google Places", updatedAt: new Date().toISOString(), ...qualifyLead({ ...lead, status: "novo" }) }));
+      const found: Lead[] = body.leads.map((lead: Omit<Lead, "status" | "notes" | "source" | "updatedAt" | "priorityScore" | "nextAction"> & { radar?: { score?: number; summary?: string } }) => { const qualified = qualifyLead({ ...lead, status: "novo" }); return { ...lead, status: "novo", notes: lead.radar?.summary || "", source: "Google Places", updatedAt: new Date().toISOString(), ...qualified, priorityScore: Math.max(qualified.priorityScore, lead.radar?.score || 0) }; });
       const newLeads = found.filter((item) => !leads.some((lead) => lead.placeId && lead.placeId === item.placeId));
       setLeads((current) => [...newLeads, ...current]);
       await persist(newLeads);
-      setNotice(`${found.length} empresas encontradas. Revise e salve somente as oportunidades relevantes.`);
+      setNotice(`${found.length} empresas encontradas. ${body.radar?.highPotential || 0} têm alto potencial para foto e vídeo; comece por elas e analise apenas seus perfis oficiais.`);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Falha na busca."); } finally { setLoading(false); }
   }
 
