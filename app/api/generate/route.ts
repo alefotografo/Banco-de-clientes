@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireProspexUser } from "../../lib/server-auth";
 
 export async function POST(request: Request) {
+  const auth = await requireProspexUser(request);
+  if (auth.error) return auth.error;
   const key = process.env.OPENAI_API_KEY;
   if (!key) return NextResponse.json({ error: "A geração requer OPENAI_API_KEY configurada no ambiente." }, { status: 503 });
   try {

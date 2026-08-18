@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { requireProspexUser } from "../../lib/server-auth";
 
 type Place = { id?: string; displayName?: { text?: string }; primaryTypeDisplayName?: { text?: string }; formattedAddress?: string; nationalPhoneNumber?: string; internationalPhoneNumber?: string; websiteUri?: string };
 
 export async function POST(request: Request) {
+  const auth = await requireProspexUser(request);
+  if (auth.error) return auth.error;
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return NextResponse.json({ error: "A busca real requer GOOGLE_MAPS_API_KEY configurada no ambiente." }, { status: 503 });
   try {

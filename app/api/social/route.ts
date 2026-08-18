@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { requireProspexUser } from "../../lib/server-auth";
 
 type Media = { timestamp?: string };
 
 export async function POST(request: Request) {
+  const auth = await requireProspexUser(request);
+  if (auth.error) return auth.error;
   const jar = await cookies();
   const token = process.env.META_IG_ACCESS_TOKEN || jar.get("prospex_meta_token")?.value;
   const accountId = process.env.META_IG_USER_ID || jar.get("prospex_meta_ig_account")?.value;

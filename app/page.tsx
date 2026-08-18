@@ -9,16 +9,11 @@ type Lead = { id: string; placeId?: string; name: string; category: string; addr
 type Approach = { id: string; channel: string; content: string; createdAt: string };
 type SocialReport = { username: string; lastPublishedAt?: string; posts30: number; posts90: number; score: number; signal: string; note: string };
 const statuses: Status[] = ["novo", "em análise", "contatado", "reunião", "proposta", "ganho", "perdido"];
-const seed: Lead[] = [
-  { id: "demo-1", name: "Exemplo Consultoria Empresarial", category: "Serviços empresariais", address: "São Paulo, SP", phone: "(11) 3000-0000", website: "https://exemplo.com.br", status: "novo", notes: "Lead demonstrativo — substitua por uma busca real.", source: "Demonstração local", updatedAt: new Date().toISOString() },
-  { id: "demo-2", name: "Exemplo Indústria", category: "Indústria", address: "Campinas, SP", status: "em análise", notes: "Avaliar presença digital e funil comercial.", source: "Demonstração local", updatedAt: new Date().toISOString() },
-];
-
 export default function Home() {
-  const [leads, setLeads] = useState<Lead[]>(seed);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [query, setQuery] = useState({ city: "", neighborhood: "", segment: "", radius: "5000" });
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState("Modo de demonstração ativo. Configure as chaves para buscar empresas reais.");
+  const [notice, setNotice] = useState("Entre com seu e-mail autorizado para acessar sua central de prospecção.");
   const [filter, setFilter] = useState<Status | "todos">("todos");
   const [selected, setSelected] = useState<Lead | null>(null);
   const [briefing, setBriefing] = useState({ audience: "", differentiators: "", proof: "", cta: "Agendar uma conversa de diagnóstico" });
@@ -38,6 +33,7 @@ export default function Home() {
   const [socialNotice, setSocialNotice] = useState("");
 
   const visible = useMemo(() => filter === "todos" ? leads : leads.filter((lead) => lead.status === filter), [filter, leads]);
+  const authHeaders = useMemo(() => session ? { authorization: `Bearer ${session.access_token}` } : {}, [session]);
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -47,7 +43,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!supabase || !session) return;
-    supabase.from("leads").select("*").order("updated_at", { ascending: false }).then(({ data, error }) => {
+    supabase.from("prospex_leads").select("*").order("priority_score", { ascending: false }).then(({ data, error }) => {
       if (error) return setNotice("Não foi possível carregar o pipeline salvo.");
       if (data) setLeads(data.map((lead) => ({ id: lead.id, placeId: lead.place_id || undefined, name: lead.name, category: lead.category || "Não informado", address: lead.address || "Não informado", phone: lead.phone || undefined, website: lead.website || undefined, email: lead.email || undefined, whatsapp: lead.whatsapp || undefined, contactName: lead.contact_name || undefined, contactRole: lead.contact_role || undefined, contactSource: lead.contact_source || undefined, status: lead.status as Status, notes: lead.notes || "", source: lead.source, updatedAt: lead.updated_at })));
       setNotice("Pipeline sincronizado com segurança.");
@@ -60,23 +56,24 @@ export default function Home() {
 
   async function persist(leadsToSave: Lead[]) {
     if (!supabase || !session || leadsToSave.length === 0) return;
-    const { error } = await supabase.from("leads").upsert(leadsToSave.map(rowFor), { onConflict: "user_id,place_id" });
+    const { error } = await supabase.from("prospex_leads").upsert(leadsToSave.map(rowFor), { onConflict: "user_id,place_id" });
     if (error) setNotice("O lead foi exibido, mas não pôde ser salvo no pipeline.");
   }
 
   async function sendMagicLink(event: FormEvent) {
     event.preventDefault();
-    if (!supabase) return setAuthNotice("Configure o Supabase para ativar o acesso seguro.");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
-    setAuthNotice(error ? "Não foi possível enviar o acesso. Verifique a configuração." : "Enviamos um link de acesso para seu e-mail.");
+    const response = await fetch("/api/auth/magic-link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
+    const body = await response.json();
+    setAuthNotice(response.ok ? "Enviamos um link de acesso para seu e-mail." : body.error || "Não foi possível enviar o acesso.");
   }
 
   async function search(event: FormEvent) {
     event.preventDefault();
+    if (!session) return setNotice("Entre com seu e-mail autorizado para pesquisar empresas.");
     if (!query.city || !query.segment) return setNotice("Informe ao menos cidade e segmento para iniciar a busca.");
     setLoading(true); setNotice("Consultando fontes públicas autorizadas…");
     try {
-      const response = await fetch("/api/places", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(query) });
+      const response = await fetch("/api/places", { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: JSON.stringify(query) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível concluir a busca.");
       const found: Lead[] = body.leads.map((lead: Omit<Lead, "status" | "notes" | "source" | "updatedAt">) => ({ ...lead, status: "novo", notes: "", source: "Google Places", updatedAt: new Date().toISOString() }));
@@ -88,21 +85,21 @@ export default function Home() {
   }
 
   async function createCopy() {
-    if (!selected) return;
+    if (!selected || !session) return setCopy("Entre com seu e-mail autorizado para gerar uma abordagem.");
     setGenerating(true); setCopy("");
     try {
-      const response = await fetch("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead: selected, briefing, channel }) });
+      const response = await fetch("/api/generate", { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: JSON.stringify({ lead: selected, briefing, channel }) });
       const body = await response.json(); if (!response.ok) throw new Error(body.error || "Não foi possível gerar a abordagem."); setCopy(body.text);
       if (supabase && session) {
         let leadId = selected.id;
         if (leadId.startsWith("place-")) {
-          const { data: savedLead, error: saveError } = await supabase.from("leads").upsert(rowFor(selected), { onConflict: "user_id,place_id" }).select("id").single();
+          const { data: savedLead, error: saveError } = await supabase.from("prospex_leads").upsert(rowFor(selected), { onConflict: "user_id,place_id" }).select("id").single();
           if (saveError || !savedLead) throw new Error("A mensagem foi criada, mas o lead não pôde ser salvo no histórico.");
           leadId = savedLead.id;
           const synced = { ...selected, id: leadId };
           setSelected(synced); setLeads((current) => current.map((lead) => lead.id === selected.id ? synced : lead));
         }
-        const { data: savedApproach, error: approachError } = await supabase.from("approaches").insert({ user_id: session.user.id, lead_id: leadId, channel, briefing, content: body.text }).select("id,channel,content,created_at").single();
+        const { data: savedApproach, error: approachError } = await supabase.from("prospex_approaches").insert({ user_id: session.user.id, lead_id: leadId, channel, briefing, content: body.text }).select("id,channel,content,created_at").single();
         if (approachError) throw new Error("A mensagem foi criada, mas não pôde ser salva no histórico.");
         setApproaches((current) => [{ id: savedApproach.id, channel: savedApproach.channel, content: savedApproach.content, createdAt: savedApproach.created_at }, ...current]);
       }
@@ -110,10 +107,11 @@ export default function Home() {
   }
 
   async function analyzeSocial() {
+    if (!session) return setSocialNotice("Entre com seu e-mail autorizado para usar o Radar Social.");
     if (!selected || !instagramHandle.trim()) return setSocialNotice("Informe o @ do Instagram comercial para analisar.");
     setSocialLoading(true); setSocialNotice("");
     try {
-      const response = await fetch("/api/social", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: instagramHandle.replace(/^@/, "") }) });
+      const response = await fetch("/api/social", { method: "POST", headers: { "content-type": "application/json", ...authHeaders }, body: JSON.stringify({ username: instagramHandle.replace(/^@/, "") }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível analisar o perfil.");
       setSocialReports((current) => ({ ...current, [selected.id]: body.report }));
@@ -123,7 +121,8 @@ export default function Home() {
 
   function exportCsv() {
     const rows = [["Empresa", "Segmento", "Endereço", "Telefone", "Site", "E-mail", "WhatsApp", "Status", "Origem", "Notas"], ...visible.map((l) => [l.name, l.category, l.address, l.phone || "", l.website || "", l.email || "", l.whatsapp || "", l.status, l.source, l.notes])];
-    const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const safeCsv = (value: unknown) => { const text = String(value); return /^[=+\-@]/.test(text) ? `'${text}` : text; };
+    const csv = rows.map((row) => row.map((value) => `"${safeCsv(value).replaceAll('"', '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = "prospex-leads.csv"; a.click(); URL.revokeObjectURL(url);
   }
 
@@ -151,7 +150,7 @@ export default function Home() {
   async function openLead(lead: Lead) {
     setSelected(lead); setCopy(""); setApproaches([]);
     if (!supabase || !session || lead.id.startsWith("place-")) return;
-    const { data } = await supabase.from("approaches").select("id,channel,content,created_at").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(10);
+    const { data } = await supabase.from("prospex_approaches").select("id,channel,content,created_at").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(10);
     if (data) setApproaches(data.map((item) => ({ id: item.id, channel: item.channel, content: item.content, createdAt: item.created_at })));
   }
 
@@ -163,9 +162,9 @@ export default function Home() {
     if (!supabase || !session) return setListNotice("Entre para salvar uma lista.");
     const leadIds = selectedIds.filter((id) => !id.startsWith("place-"));
     if (!listName.trim() || leadIds.length === 0) return setListNotice("Dê um nome à lista e selecione ao menos um lead salvo.");
-    const { data: list, error } = await supabase.from("lead_lists").insert({ user_id: session.user.id, name: listName.trim() }).select("id").single();
+    const { data: list, error } = await supabase.from("prospex_lists").insert({ user_id: session.user.id, name: listName.trim() }).select("id").single();
     if (error || !list) return setListNotice("Não foi possível criar a lista.");
-    const { error: itemError } = await supabase.from("lead_list_items").insert(leadIds.map((leadId) => ({ list_id: list.id, lead_id: leadId })));
+    const { error: itemError } = await supabase.from("prospex_list_items").insert(leadIds.map((leadId) => ({ list_id: list.id, lead_id: leadId })));
     if (itemError) return setListNotice("A lista foi criada, mas não foi possível incluir todos os leads.");
     setListNotice(`Lista “${listName.trim()}” salva com ${leadIds.length} leads.`); setListName(""); setSelectedIds([]);
   }
