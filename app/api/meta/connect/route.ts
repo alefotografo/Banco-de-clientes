@@ -9,6 +9,6 @@ export function GET(request: Request) {
   url.searchParams.set("client_id", appId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "instagram_basic");
+  url.searchParams.set("scope", "instagram_basic,pages_show_list");
   return NextResponse.redirect(url);
 }
