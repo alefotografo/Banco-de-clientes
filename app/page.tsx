@@ -125,6 +125,13 @@ export default function Home() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Não foi possível analisar o perfil.");
       setSocialReports((current) => ({ ...current, [selected.id]: body.report }));
+      const socialScore = Number(body.report.score);
+      if (Number.isFinite(socialScore)) {
+        const changed = { ...selected, priorityScore: Math.round((selected.priorityScore * 0.65) + (socialScore * 0.35)), nextAction: socialScore < 40 ? "Sugerir plano de conteúdo e presença digital" : "Usar a frequência recente como gancho de abordagem", updatedAt: new Date().toISOString() };
+        setSelected(changed);
+        setLeads((current) => current.map((lead) => lead.id === selected.id ? changed : lead));
+        void persist([changed]);
+      }
       setSocialNotice("Radar atualizado com dados do perfil comercial.");
     } catch (error) { setSocialNotice(error instanceof Error ? error.message : "Falha ao analisar o perfil."); } finally { setSocialLoading(false); }
   }
