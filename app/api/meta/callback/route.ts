@@ -16,7 +16,11 @@ export async function GET(request: Request) {
   const pages = await fetch(`https://graph.facebook.com/v25.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(tokenPayload.access_token)}`);
   if (!pages.ok) return NextResponse.json({ error: "A Meta não liberou a leitura das Páginas selecionadas. Refça a conexão e permita o acesso à Página do Facebook." }, { status: pages.status });
   const pagePayload = await pages.json() as { data?: Array<{ name?: string; instagram_business_account?: { id?: string; username?: string } }> };
-  const instagramAccountId = pagePayload.data?.find((page) => page.instagram_business_account?.id)?.instagram_business_account?.id;
+  // Some Page configurations do not return the selected Page through /me/accounts,
+  // even after the account has been explicitly authorized in Meta's asset picker.
+  // A single-user deployment may provide the authorized professional account ID
+  // through a server-only environment variable as a safe fallback.
+  const instagramAccountId = pagePayload.data?.find((page) => page.instagram_business_account?.id)?.instagram_business_account?.id || process.env.META_IG_USER_ID;
   if (!instagramAccountId) {
     const selectedPages = pagePayload.data?.map((page) => page.name).filter(Boolean).join(", ") || "nenhuma Página";
     return NextResponse.json({ error: `Nenhuma conta profissional do Instagram foi encontrada na Página selecionada (${selectedPages}). No Instagram, conecte @alefotografo à Página correta em Editar perfil → Página e refaça esta autorização.` }, { status: 400 });
