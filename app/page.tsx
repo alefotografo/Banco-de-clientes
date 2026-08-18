@@ -33,7 +33,7 @@ export default function Home() {
   const [socialNotice, setSocialNotice] = useState("");
 
   const visible = useMemo(() => filter === "todos" ? leads : leads.filter((lead) => lead.status === filter), [filter, leads]);
-  const authHeaders = useMemo<Record<string, string>>(() => session ? { authorization: `Bearer ${session.access_token}` } : {}, [session]);
+  const authHeaders: Record<string, string> = session ? { authorization: `Bearer ${session.access_token}` } : {};
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
