@@ -8,7 +8,7 @@ export async function requireProspexUser(request: Request) {
   if (!url || !key || !token) return { error: NextResponse.json({ error: "Faça login para usar esta função." }, { status: 401 }) };
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: { user }, error } = await client.auth.getUser(token);
-  const allowed = process.env.PROSPEX_ALLOWED_EMAIL?.trim().toLowerCase();
-  if (error || !user || (allowed && user.email?.toLowerCase() !== allowed)) return { error: NextResponse.json({ error: "Este acesso não está autorizado." }, { status: 403 }) };
+  const allowed = (process.env.PROSPEX_ALLOWED_EMAILS || process.env.PROSPEX_ALLOWED_EMAIL || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
+  if (error || !user || (allowed.length > 0 && !allowed.includes(user.email?.toLowerCase() || ""))) return { error: NextResponse.json({ error: "Este acesso não está autorizado." }, { status: 403 }) };
   return { user };
 }
