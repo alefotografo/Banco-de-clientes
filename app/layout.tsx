@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./auth-modal.css";
 export const metadata: Metadata = {
   title: "Prospex B2B | Prospecção que abre conversas",
   description: "Busca regional, pipeline e abordagens B2B para marketing completo.",
