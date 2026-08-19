@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   const { email } = await request.json() as { email?: string };
-  const allowed = (process.env.PROSPEX_ALLOWED_EMAILS || process.env.PROSPEX_ALLOWED_EMAIL || "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  const configuredEmails = process.env.PROSPEX_ALLOWED_EMAILS || process.env.PROSPEX_ALLOWED_EMAIL || "alefotografo@alefotografo.com.br,comercial@alefotografo.com.br";
+  const allowed = configuredEmails.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!email || !url || !key) return NextResponse.json({ error: "O acesso seguro ainda não foi configurado." }, { status: 503 });
