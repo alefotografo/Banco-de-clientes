@@ -20,9 +20,9 @@ export async function POST(request: Request) {
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return NextResponse.json({ error: "A busca real requer GOOGLE_MAPS_API_KEY configurada no ambiente." }, { status: 503 });
   try {
-    const input = await request.json() as { city?: string; neighborhood?: string; segment?: string; radius?: string };
+    const input = await request.json() as { city?: string; neighborhood?: string; cep?: string; segment?: string; radius?: string };
     if (!input.city?.trim() || !input.segment?.trim()) return NextResponse.json({ error: "Cidade e segmento são obrigatórios." }, { status: 400 });
-    const location = [input.neighborhood, input.city, "Brasil"].filter(Boolean).join(", ");
+    const location = [input.neighborhood, input.cep, input.city, "Brasil"].filter(Boolean).join(", ");
     const geocode = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${encodeURIComponent(key)}`);
     const geo = await geocode.json() as { results?: Array<{ geometry?: { location?: { lat: number; lng: number } } }> };
     const point = geo.results?.[0]?.geometry?.location;
